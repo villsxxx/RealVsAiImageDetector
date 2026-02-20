@@ -21,7 +21,6 @@ print(f"Всего изображений: {len(pairs)}")
 
 dataset = CustomDataset(pairs)
 
-# 🔹 Добавил: разделение на train/val
 train_size = int(0.8 * len(dataset))
 val_size = len(dataset) - train_size
 train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
