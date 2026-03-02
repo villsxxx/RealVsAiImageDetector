@@ -10,13 +10,24 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 real_images_paths = sorted(glob.glob('D:/Datasets/RealAndSyntheticImages/RealArt/RealArt/*'))
 generate_images_paths = sorted(glob.glob('D:/Datasets/RealAndSyntheticImages/AiArtData/AiArtData/*'))
+real_images_paths_2 = sorted(glob.glob('D:/Datasets/RealAndSyntheticImages/train/real/*'))
+generate_images_paths_2 = sorted(glob.glob('D:/Datasets/RealAndSyntheticImages/train/fake/*'))
+real_images_paths_3 = sorted(glob.glob('D:/Datasets/RealAndSyntheticImages/test/real/*'))
+generate_images_paths_3 = sorted(glob.glob('D:/Datasets/RealAndSyntheticImages/test/fake/*'))
 
 pairs = []
 for real_image in real_images_paths:
     pairs.append((real_image, 0))
 for generate_image in generate_images_paths:
     pairs.append((generate_image, 1))
-
+for real_image in real_images_paths_2:
+    pairs.append((real_image, 0))
+for generate_image in generate_images_paths_2:
+    pairs.append((generate_image, 1))
+for real_image in real_images_paths_3:
+    pairs.append((real_image, 0))
+for generate_image in generate_images_paths_3:
+    pairs.append((generate_image, 1))
 print(f"Всего изображений: {len(pairs)}")
 
 dataset = CustomDataset(pairs)
