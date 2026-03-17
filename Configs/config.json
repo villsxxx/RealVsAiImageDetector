@@ -1,0 +1,56 @@
+{
+  "name": "ArtClassification",
+  "seed": 42,
+  "dataset": {
+    "dataset_type": "BaseDataset",
+    "train_class_0_paths": [
+      "D:/Datasets/RealAndSyntheticImages/RealArt/RealArt/*",
+      "D:/Datasets/RealAndSyntheticImages/train/real/*",
+      "D:/Datasets/RealAndSyntheticImages/test/real/*"
+    ],
+    "train_class_1_paths": [
+      "D:/Datasets/RealAndSyntheticImages/AiArtData/AiArtData/*",
+      "D:/Datasets/RealAndSyntheticImages/train/fake/*",
+      "D:/Datasets/RealAndSyntheticImages/test/fake/*"
+    ],
+    "val_class_0_paths": [
+      "D:/Datasets/RealAndSyntheticImages/RealArt/RealArt/*"
+    ],
+    "val_class_1_paths": [
+      "D:/Datasets/RealAndSyntheticImages/AiArtData/AiArtData/*"
+    ],
+    "img_height": 256,
+    "img_width": 256,
+    "crop_size": 224,
+    "use_horizontal_flip": true,
+    "normalize_mean": [0.485, 0.456, 0.406],
+    "normalize_std": [0.229, 0.224, 0.225]
+  },
+  "model": {
+    "model_type": "CustomResNet",
+    "num_classes": 2
+  },
+  "optimizer": {
+    "optimizer_type": "Adam",
+    "lr": 0.001,
+    "weight_decay": 0.0,
+    "betas": [0.9, 0.999]
+  },
+  "trainer": {
+    "trainer_type": "LightningTrainer",
+    "save_dir": "D:/nnModels/RGDetector",
+    "batch_size": 8,
+    "epochs": 100,
+    "save_every_n_epochs": 99,
+    "limit_train_batches": 0.01,
+    "limit_val_batches": 0.01,
+    "num_workers": 4,
+    "persistent_workers": true,
+    "log_every_n_steps": 10,
+    "check_val_every_n_epoch": 1,
+    "accelerator": "cuda",
+    "devices": 1,
+    "precision": 16
+  },
+  "loss": "cross_entropy"
+}

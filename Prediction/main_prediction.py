@@ -2,16 +2,16 @@ import torch
 import os
 from PIL import Image
 from torchvision import transforms
-from Model.ResNet import CustomResNet
+from Models.ResNet import CustomResNet
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Используемое устройство: {device}")
 
-inference_image_path = 'D:/Validation_example/real_photo.jpg'
+inference_image_path = 'D:/Validation_example/images.jpg'
 
 model = CustomResNet(num_classes=2).to(device)
 
-model_path = 'D:/nnModels/RGDetector/run_1/best_model.pth'
+model_path = 'D:/nnModels/RGDetector/run_2/best_model.pth'
 if not os.path.exists(model_path):
     raise FileNotFoundError(f"Файл модели не найден: {model_path}")
 
