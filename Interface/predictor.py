@@ -2,10 +2,12 @@ import torch
 import torchvision.transforms as transforms
 from PIL import Image
 import os
+import sys
 
-CHECKPOINT_PATH = os.path.join(os.path.dirname(__file__), '..', 'ActualModels', 'best-epoch=91-val_loss=0.4410.ckpt')
-CHECKPOINT_PATH = os.path.abspath(CHECKPOINT_PATH)
+project_root = os.path.dirname(os.path.dirname(__file__))
+sys.path.insert(0, project_root)
 
+CHECKPOINT_PATH = os.path.join(project_root, 'ActualModels', 'best-epoch=91-val_loss=0.4410.ckpt')
 
 from Models import CustomResNet
 
