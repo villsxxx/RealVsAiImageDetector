@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Панель управления - AI Detector{% endblock %}
+{% block content %}
+<h2 class="mb-4"><i class="fas fa-chart-line me-2"></i>Панель управления</h2>
+<div class="row">
+    <div class="col-md-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Статистика</h5>
+                <p class="card-text">Всего проверок: {{ predictions|length }}</p>
+                {% if predictions %}
+                    {% set real = predictions|selectattr('class_predicted', 'equalto', 0)|list|length %}
+                    {% set fake = predictions|selectattr('class_predicted', 'equalto', 1)|list|length %}
+                    <p>Реальные: {{ real }}</p>
+                    <p>Сгенерированные: {{ fake }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Быстрый доступ</h5>
+                <a href="{{ url_for('index') }}" class="btn btn-primary me-2">Новая проверка</a>
+                <a href="{{ url_for('history') }}" class="btn btn-outline-secondary">Вся история</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h4 class="mt-4">Последние проверки</h4>
+<div class="row">
+    {% for pred in predictions %}
+        {% set confidence_display = pred.confidence if pred.class_predicted == 1 else 1 - pred.confidence %}
+        {% set display_label = "AI" if pred.class_predicted == 1 else "Real" %}
+        {% set is_uncertain = confidence_display < 0.65 %}
+        <div class="col-md-6 col-lg-4 mb-3">
+            <div class="card h-100 shadow-sm">
+                <img src="{{ url_for('static', filename='uploads/' + pred.image_filename) }}" class="card-img-top" alt="Preview" style="height: 180px; object-fit: cover;">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        {% if is_uncertain %}
+                            <span class="badge bg-warning text-dark">Неопределённо</span>
+                        {% elif pred.class_predicted == 0 %}
+                            <span class="badge bg-success">Реальное</span>
+                        {% else %}
+                            <span class="badge bg-danger">Сгенерированное</span>
+                        {% endif %}
+                    </h5>
+                    <div class="slider-container slider-container-sm mb-2">
+                        <span class="slider-label-left">Real</span>
+                        <div class="slider-track">
+                            <div class="slider-fill" style="background: linear-gradient(90deg, #ef476f 0%, #ffd166 50%, #06d6a0 100%);"></div>
+                            <div class="slider-pointer" style="left: {{ (confidence_display * 100) }}%;"></div>
+                        </div>
+                        <span class="slider-label-right">AI</span>
+                    </div>
+                    <p class="card-text">
+                        {{ "%.1f"|format(confidence_display * 100) }}% (в пользу {{ display_label }})<br>
+                        <small class="text-muted">{{ pred.timestamp.strftime('%d.%m.%Y %H:%M') }}</small>
+                    </p>
+                    <a href="{{ url_for('prediction_detail', pred_id=pred.id) }}" class="btn btn-sm btn-outline-primary">Подробнее</a>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <p class="text-muted">Пока нет проверок.</p>
+    {% endfor %}
+</div>
+{% endblock %}

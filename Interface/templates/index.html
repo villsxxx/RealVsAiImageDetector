@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Главная - AI Detector{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 text-center">
+        <h1 class="display-4 mb-4">Определитель AI-изображений</h1>
+        <p class="lead">Загрузите изображение, и нейросеть определит, создано оно искусственным интеллектом или человеком.</p>
+
+        {% if current_user.is_authenticated %}
+            <div class="card shadow-lg mt-5">
+                <div class="card-body p-5">
+                    <h3 class="mb-4">Загрузите изображение</h3>
+                    <form method="POST" action="{{ url_for('upload') }}" enctype="multipart/form-data" id="uploadForm">
+                        <div class="upload-area mb-3">
+                            <i class="fas fa-cloud-upload-alt fa-3x mb-3 text-primary"></i>
+                            <p class="mb-2">Выберите файл для анализа</p>
+                            <input type="file" name="file" accept="image/*" class="form-control" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+                            <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            Загрузить и проанализировать
+                        </button>
+                    </form>
+                </div>
+            </div>
+        {% else %}
+            <div class="mt-5">
+                <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg me-2">Войти</a>
+                <a href="{{ url_for('register') }}" class="btn btn-outline-primary btn-lg">Регистрация</a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('uploadForm').addEventListener('submit', function() {
+    var btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Обработка...';
+});
+</script>
+{% endblock %}
