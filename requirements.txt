@@ -1,0 +1,14 @@
+torch
+torchvision
+pytorch-lightning
+opencv-python
+numpy
+tqdm
+pydantic
+Flask
+Flask-Login
+Flask-SQLAlchemy
+Flask-WTF
+WTForms
+email-validator
+Pillow
