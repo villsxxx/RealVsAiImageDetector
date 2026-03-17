@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Результат проверки - AI Detector{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-lg">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">Результат анализа</h3>
+            </div>
+            <div class="card-body text-center">
+                <img src="{{ url_for('static', filename='uploads/' + pred.image_filename) }}" alt="Analyzed image" class="img-fluid rounded mb-4" style="max-height: 400px;">
+
+                {% set confidence_display = pred.confidence if pred.class_predicted == 1 else 1 - pred.confidence %}
+                {% set display_label = "AI" if pred.class_predicted == 1 else "Real" %}
+                {% set is_uncertain = confidence_display < 0.65 %}
+
+                <h4 class="mb-3">Вердикт:</h4>
+                <div class="display-5 mb-3
+                    {% if is_uncertain %}text-warning
+                    {% elif pred.class_predicted == 0 %}text-success
+                    {% else %}text-danger{% endif %}">
+                    {% if is_uncertain %}
+                        <i class="fas fa-question-circle"></i> Неопределённый результат
+                    {% elif pred.class_predicted == 0 %}
+                        <i class="fas fa-check-circle"></i> Реальное изображение
+                    {% else %}
+                        <i class="fas fa-exclamation-triangle"></i> Сгенерированное AI
+                    {% endif %}
+                </div>
+
+                <h5>Уверенность модели:</h5>
+                <div class="slider-container slider-container-lg mb-3">
+                    <span class="slider-label-left">Real</span>
+                    <div class="slider-track">
+                        <div class="slider-fill" style="background: linear-gradient(90deg, #ef476f 0%, #ffd166 50%, #06d6a0 100%);"></div>
+                        <div class="slider-pointer" style="left: {{ (confidence_display * 100) }}%;"></div>
+                    </div>
+                    <span class="slider-label-right">AI</span>
+                </div>
+                <p class="lead">
+                    Уверенность: <strong>{{ "%.2f"|format(confidence_display * 100) }}%</strong> (в пользу класса "{{ display_label }}")
+                </p>
+                {% if is_uncertain %}
+                    <div class="alert alert-warning" role="alert">
+                        Для данного изображения не удаётся однозначно определить, создано ли это изображение искусственным интеллектом.
+                    </div>
+                {% endif %}
+
+                <div class="mt-4">
+                    <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg me-2">Новая проверка</a>
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary btn-lg">В панель</a>
+                </div>
+            </div>
+            <div class="card-footer text-muted text-center">
+                Проверка выполнена: {{ pred.timestamp.strftime('%d.%m.%Y %H:%M') }}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
