@@ -5,7 +5,7 @@ import torchvision.transforms as transforms
 from PIL import Image
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from database import init_db, get_user, add_request, get_requests, update_request
-from Model.ResNet import CustomResNet
+from Models.ResNet import CustomResNet
 
 app = Flask(__name__)
 app.secret_key = 'super_secret_key'
