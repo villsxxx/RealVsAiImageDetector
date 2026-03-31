@@ -1,17 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Результат проверки - AI Detector{% endblock %}
 {% block content %}
+<div class="back-button">
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Назад
+    </a>
+</div>
+
 <div class="row justify-content-center">
     <div class="col-md-8">
-        <div class="card shadow-lg">
-            <div class="card-header bg-primary text-white">
-                <h3 class="mb-0">Результат анализа</h3>
+        <div class="card">
+            <div class="card-header">
+                Результат анализа
             </div>
             <div class="card-body text-center">
                 <img src="{{ url_for('static', filename='uploads/' + pred.image_filename) }}" alt="Analyzed image" class="img-fluid rounded mb-4" style="max-height: 400px;">
 
                 {% set confidence_display = pred.confidence if pred.class_predicted == 1 else 1 - pred.confidence %}
-                {% set display_label = "AI" if pred.class_predicted == 1 else "Real" %}
+                {% set display_label = "AI" if pred.class_predicted == 1 else "Реальное" %}
                 {% set is_uncertain = confidence_display < 0.65 %}
 
                 <h4 class="mb-3">Вердикт:</h4>
@@ -24,22 +30,25 @@
                     {% elif pred.class_predicted == 0 %}
                         <i class="fas fa-check-circle"></i> Реальное изображение
                     {% else %}
-                        <i class="fas fa-exclamation-triangle"></i> Сгенерированное AI
+                        <i class="fas fa-microchip"></i> Сгенерированное AI
                     {% endif %}
                 </div>
 
                 <h5>Уверенность модели:</h5>
                 <div class="slider-container slider-container-lg mb-3">
-                    <span class="slider-label-left">Real</span>
-                    <div class="slider-track">
-                        <div class="slider-fill" style="background: linear-gradient(90deg, #ef476f 0%, #ffd166 50%, #06d6a0 100%);"></div>
-                        <div class="slider-pointer" style="left: {{ (confidence_display * 100) }}%;"></div>
+                    <div class="slider-labels">
+                        <span>AI</span>
+                        <span>Real</span>
                     </div>
-                    <span class="slider-label-right">AI</span>
+                    <div class="slider-track-container">
+                        <div class="slider-track">
+                            <div class="slider-fill"></div>
+                            <div class="slider-pointer" style="left: {{ ((1 - pred.confidence) * 100) }}%;"></div>
+                        </div>
+                    </div>
+                    <div class="confidence-percent">{{ "%.2f"|format(confidence_display * 100) }}% (в пользу класса "{{ display_label }}")</div>
                 </div>
-                <p class="lead">
-                    Уверенность: <strong>{{ "%.2f"|format(confidence_display * 100) }}%</strong> (в пользу класса "{{ display_label }}")
-                </p>
+
                 {% if is_uncertain %}
                     <div class="alert alert-warning" role="alert">
                         Для данного изображения не удаётся однозначно определить, создано ли это изображение искусственным интеллектом.
@@ -48,7 +57,7 @@
 
                 <div class="mt-4">
                     <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg me-2">Новая проверка</a>
-                    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary btn-lg">В панель</a>
+                    <a href="{{ url_for('history') }}" class="btn btn-outline-secondary btn-lg">История проверок</a>
                 </div>
             </div>
             <div class="card-footer text-muted text-center">
@@ -57,4 +66,5 @@
         </div>
     </div>
 </div>
+
 {% endblock %}

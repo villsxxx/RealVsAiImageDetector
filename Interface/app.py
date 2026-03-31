@@ -1,16 +1,16 @@
 import os
-import tempfile
-import requests
+import threading
 from flask import Flask, render_template, redirect, url_for, flash, request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from werkzeug.exceptions import RequestEntityTooLarge
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from datetime import datetime
 import uuid
-import cv2
-import numpy as np
+import tempfile
+import shutil
 
-from models import db, User, Prediction, BatchPrediction, FramePrediction
+from models import db, User, Prediction
 from forms import LoginForm, RegisterForm
 from predictor import predictor
 
@@ -19,7 +19,8 @@ app.config['SECRET_KEY'] = 'your-secret-key-here-change-it'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join('static', 'uploads')
-app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB для видео
+# Видео обычно весит больше картинок, поэтому лимит увеличиваем
+app.config['MAX_CONTENT_LENGTH'] = 300 * 1024 * 1024
 
 db.init_app(app)
 login_manager = LoginManager(app)
@@ -28,130 +29,32 @@ login_manager.login_view = 'login'
 with app.app_context():
     db.create_all()
 
+# Хранилище задач обработки видео (упрощённо: в памяти процесса)
+# Важно: если перезапустить сервер — задачи сотрутся.
+VIDEO_TASKS = {}
+VIDEO_TASKS_LOCK = threading.Lock()
+
+
+@app.errorhandler(RequestEntityTooLarge)
+def handle_file_too_large(e):
+    flash('Слишком большой объём данных. Попробуйте загрузить меньше файлов или уменьшить размер.', 'danger')
+    return redirect(url_for('index'))
+
 
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp'}
-ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'avi', 'mov', 'mkv', 'webm'}
+IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
+VIDEO_EXTENSIONS = {'mp4', 'mov', 'avi', 'mkv', 'webm', 'mpeg', 'mpg'}
 
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def allowed_image_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in IMAGE_EXTENSIONS
 
-
-def allowed_video(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_VIDEO_EXTENSIONS
-
-
-def download_image_from_url(url):
-    """Скачивает изображение по URL и сохраняет во временный файл"""
-    try:
-        response = requests.get(url, timeout=10, stream=True)
-        response.raise_for_status()
-
-        # Определяем расширение из Content-Type или URL
-        content_type = response.headers.get('content-type', '')
-        ext = 'jpg'
-        if 'png' in content_type:
-            ext = 'png'
-        elif 'gif' in content_type:
-            ext = 'gif'
-        elif 'jpeg' in content_type or 'jpg' in content_type:
-            ext = 'jpg'
-
-        # Создаём временный файл
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}')
-        for chunk in response.iter_content(chunk_size=8192):
-            temp_file.write(chunk)
-        temp_file.close()
-
-        return temp_file.name
-    except Exception as e:
-        raise Exception(f"Не удалось загрузить изображение: {str(e)}")
-
-
-def process_video_frames(video_path, sample_rate=1):
-    """
-    Обрабатывает видео, извлекая кадры с заданной частотой
-    sample_rate: извлекать каждый N-ый кадр
-    """
-    cap = cv2.VideoCapture(video_path)
-    frame_predictions = []
-    frame_count = 0
-    processed_frames = 0
-
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        # Извлекаем каждый sample_rate-ый кадр
-        if frame_count % sample_rate == 0:
-            # Сохраняем кадр во временный файл
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
-            cv2.imwrite(temp_file.name, frame)
-
-            try:
-                # Предсказание для кадра
-                pred_class, confidence = predictor.predict(temp_file.name)
-                frame_predictions.append({
-                    'frame_number': frame_count,
-                    'class_predicted': pred_class,
-                    'confidence': confidence,
-                    'temp_path': temp_file.name
-                })
-                processed_frames += 1
-            except Exception as e:
-                print(f"Ошибка обработки кадра {frame_count}: {e}")
-            finally:
-                # Не удаляем временный файл сразу, он понадобится для отображения
-                pass
-
-        frame_count += 1
-
-    cap.release()
-
-    # Рассчитываем статистику
-    if frame_predictions:
-        ai_count = sum(1 for p in frame_predictions if p['class_predicted'] == 1)
-        real_count = sum(1 for p in frame_predictions if p['class_predicted'] == 0)
-        avg_confidence_ai = sum(
-            p['confidence'] for p in frame_predictions if p['class_predicted'] == 1) / ai_count if ai_count > 0 else 0
-        avg_confidence_real = sum((1 - p['confidence']) for p in frame_predictions if
-                                  p['class_predicted'] == 0) / real_count if real_count > 0 else 0
-
-        # Общий вердикт: большинство кадров
-        total_frames_processed = len(frame_predictions)
-        ai_percentage = (ai_count / total_frames_processed) * 100
-
-        # Средняя уверенность по всем кадрам
-        overall_confidence = sum(
-            p['confidence'] if p['class_predicted'] == 1 else (1 - p['confidence'])
-            for p in frame_predictions
-        ) / total_frames_processed
-
-        final_class = 1 if ai_count > real_count else 0
-        is_uncertain = overall_confidence < 0.65
-
-        return {
-            'frame_predictions': frame_predictions,
-            'statistics': {
-                'total_frames_processed': total_frames_processed,
-                'ai_frames': ai_count,
-                'real_frames': real_count,
-                'ai_percentage': ai_percentage,
-                'avg_confidence_ai': avg_confidence_ai,
-                'avg_confidence_real': avg_confidence_real,
-                'overall_confidence': overall_confidence,
-                'final_class': final_class,
-                'is_uncertain': is_uncertain
-            }
-        }
-    else:
-        return None
+def allowed_video_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in VIDEO_EXTENSIONS
 
 
 @app.route('/')
@@ -201,11 +104,33 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    predictions = Prediction.query.filter_by(user_id=current_user.id).order_by(Prediction.timestamp.desc()).limit(
-        10).all()
-    batch_predictions = BatchPrediction.query.filter_by(user_id=current_user.id).order_by(
-        BatchPrediction.timestamp.desc()).limit(5).all()
-    return render_template('dashboard.html', predictions=predictions, batch_predictions=batch_predictions)
+    # Для карточек показываем последние проверки, но статистику считаем по всем.
+    recent_predictions = (
+        Prediction.query.filter_by(user_id=current_user.id)
+        .order_by(Prediction.timestamp.desc())
+        .limit(6)
+        .all()
+    )
+
+    stats_total = Prediction.query.filter_by(user_id=current_user.id).count()
+    stats_real = Prediction.query.filter_by(user_id=current_user.id, class_predicted=0).count()
+    stats_ai = Prediction.query.filter_by(user_id=current_user.id, class_predicted=1).count()
+
+    first_pred = (
+        Prediction.query.filter_by(user_id=current_user.id)
+        .order_by(Prediction.timestamp.asc())
+        .first()
+    )
+    days_activity = ((datetime.utcnow() - first_pred.timestamp).days) + 1 if first_pred else 0
+
+    return render_template(
+        'dashboard.html',
+        recent_predictions=recent_predictions,
+        stats_total=stats_total,
+        stats_real=stats_real,
+        stats_ai=stats_ai,
+        days_activity=days_activity
+    )
 
 
 @app.route('/history')
@@ -217,16 +142,6 @@ def history():
     return render_template('history.html', pagination=pagination)
 
 
-@app.route('/batch_history')
-@login_required
-def batch_history():
-    page = request.args.get('page', 1, type=int)
-    pagination = BatchPrediction.query.filter_by(user_id=current_user.id).order_by(
-        BatchPrediction.timestamp.desc()).paginate(
-        page=page, per_page=10)
-    return render_template('batch_history.html', pagination=pagination)
-
-
 @app.route('/clear_history', methods=['POST'])
 @login_required
 def clear_history():
@@ -234,15 +149,6 @@ def clear_history():
     db.session.commit()
     flash('Вся история удалена.', 'success')
     return redirect(url_for('history'))
-
-
-@app.route('/clear_batch_history', methods=['POST'])
-@login_required
-def clear_batch_history():
-    BatchPrediction.query.filter_by(user_id=current_user.id).delete()
-    db.session.commit()
-    flash('Вся история пакетных проверок удалена.', 'success')
-    return redirect(url_for('batch_history'))
 
 
 @app.route('/delete_prediction/<int:pred_id>', methods=['POST'])
@@ -253,6 +159,7 @@ def delete_prediction(pred_id):
         flash('У вас нет доступа к этой записи.', 'danger')
         return redirect(url_for('history'))
 
+    # Удаляем файл с диска
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], pred.image_filename)
     if os.path.exists(file_path):
         os.remove(file_path)
@@ -263,248 +170,181 @@ def delete_prediction(pred_id):
     return redirect(url_for('history'))
 
 
-@app.route('/delete_batch/<int:batch_id>', methods=['POST'])
-@login_required
-def delete_batch(batch_id):
-    batch = BatchPrediction.query.get_or_404(batch_id)
-    if batch.user_id != current_user.id:
-        flash('У вас нет доступа к этой записи.', 'danger')
-        return redirect(url_for('batch_history'))
-
-    # Удаляем связанные кадры и файлы
-    for frame in batch.frames:
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], frame.image_filename)
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        db.session.delete(frame)
-
-    db.session.delete(batch)
-    db.session.commit()
-    flash('Пакетная проверка удалена.', 'success')
-    return redirect(url_for('batch_history'))
-
-
 @app.route('/upload', methods=['POST'])
 @login_required
 def upload():
-    # Проверяем тип загрузки
-    upload_type = request.form.get('upload_type', 'single')
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-    if upload_type == 'single':
-        return upload_single_image()
-    elif upload_type == 'multiple':
-        return upload_multiple_images()
-    elif upload_type == 'url':
-        return upload_from_url()
-    elif upload_type == 'video':
-        return upload_video()
-    else:
-        flash('Неизвестный тип загрузки', 'danger')
+    user_id = current_user.id
+    image_files = request.files.getlist('files')
+    video_file = request.files.get('video')
+
+    has_images = any(f and f.filename for f in image_files)
+    has_video = bool(video_file and video_file.filename)
+
+    if not has_images and not has_video:
+        flash('Выберите изображения или видео', 'danger')
         return redirect(url_for('index'))
 
+    # Сохраняем изображения заранее (чтобы фоновой задаче было с чем работать)
+    saved_image_info = []  # (filepath_in_uploads, filename)
+    if has_images:
+        for file in image_files:
+            if not file or not file.filename:
+                continue
+            if not allowed_image_file(file.filename):
+                flash('Недопустимый формат изображения', 'danger')
+                return redirect(url_for('index'))
 
-def upload_single_image():
-    if 'file' not in request.files:
-        flash('Файл не найден', 'danger')
-        return redirect(url_for('index'))
+            ext = file.filename.rsplit('.', 1)[1].lower()
+            filename = f"{uuid.uuid4().hex}.{ext}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            saved_image_info.append((filepath, filename))
 
-    file = request.files['file']
-    if file.filename == '':
-        flash('Файл не выбран', 'danger')
-        return redirect(url_for('index'))
-
-    if not allowed_file(file.filename):
-        flash('Недопустимый формат файла', 'danger')
-        return redirect(url_for('index'))
-
-    # Генерируем уникальное имя файла
-    ext = file.filename.rsplit('.', 1)[1].lower()
-    filename = f"{uuid.uuid4().hex}.{ext}"
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(filepath)
-
-    try:
-        pred_class, confidence = predictor.predict(filepath)
-    except Exception as e:
-        if os.path.exists(filepath):
-            os.remove(filepath)
-        flash(f'Ошибка при обработке: {str(e)}', 'danger')
-        return redirect(url_for('index'))
-
-    prediction = Prediction(
-        user_id=current_user.id,
-        image_filename=filename,
-        class_predicted=pred_class,
-        confidence=confidence
-    )
-    db.session.add(prediction)
-    db.session.commit()
-
-    return redirect(url_for('prediction_detail', pred_id=prediction.id))
-
-
-def upload_multiple_images():
-    if 'files' not in request.files:
-        flash('Файлы не найдены', 'danger')
-        return redirect(url_for('index'))
-
-    files = request.files.getlist('files')
-    if not files or files[0].filename == '':
-        flash('Файлы не выбраны', 'danger')
-        return redirect(url_for('index'))
-
-    predictions = []
-    for file in files:
-        if not allowed_file(file.filename):
-            continue
-
-        ext = file.filename.rsplit('.', 1)[1].lower()
-        filename = f"{uuid.uuid4().hex}.{ext}"
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-
-        try:
-            pred_class, confidence = predictor.predict(filepath)
-            prediction = Prediction(
-                user_id=current_user.id,
-                image_filename=filename,
-                class_predicted=pred_class,
-                confidence=confidence
-            )
-            db.session.add(prediction)
-            predictions.append(prediction)
-        except Exception as e:
-            if os.path.exists(filepath):
-                os.remove(filepath)
-            flash(f'Ошибка при обработке {file.filename}: {str(e)}', 'danger')
-
-    db.session.commit()
-
-    if predictions:
-        flash(f'Успешно обработано {len(predictions)} изображений', 'success')
-        return redirect(url_for('dashboard'))
-    else:
-        flash('Не удалось обработать ни одного изображения', 'danger')
-        return redirect(url_for('index'))
-
-
-def upload_from_url():
-    url = request.form.get('url', '').strip()
-    if not url:
-        flash('URL не указан', 'danger')
-        return redirect(url_for('index'))
-
-    try:
-        temp_path = download_image_from_url(url)
-
-        # Генерируем имя для сохранения
-        ext = temp_path.split('.')[-1]
-        filename = f"{uuid.uuid4().hex}.{ext}"
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-
-        # Перемещаем временный файл в постоянное хранилище
-        import shutil
-        shutil.move(temp_path, filepath)
-
-        pred_class, confidence = predictor.predict(filepath)
-
-        prediction = Prediction(
-            user_id=current_user.id,
-            image_filename=filename,
-            class_predicted=pred_class,
-            confidence=confidence
-        )
-        db.session.add(prediction)
-        db.session.commit()
-
-        return redirect(url_for('prediction_detail', pred_id=prediction.id))
-
-    except Exception as e:
-        flash(f'Ошибка при загрузке по URL: {str(e)}', 'danger')
-        return redirect(url_for('index'))
-
-
-def upload_video():
-    if 'video' not in request.files:
-        flash('Видеофайл не найден', 'danger')
-        return redirect(url_for('index'))
-
-    video = request.files['video']
-    if video.filename == '':
-        flash('Файл не выбран', 'danger')
-        return redirect(url_for('index'))
-
-    if not allowed_video(video.filename):
-        flash('Недопустимый формат видеофайла', 'danger')
-        return redirect(url_for('index'))
-
-    # Сохраняем видео во временный файл
-    temp_video = tempfile.NamedTemporaryFile(delete=False, suffix=f".{video.filename.rsplit('.', 1)[1].lower()}")
-    video.save(temp_video.name)
-    temp_video.close()
-
-    # Получаем параметры обработки
-    sample_rate = int(request.form.get('sample_rate', 5))  # Каждый N-ый кадр
-    max_frames = int(request.form.get('max_frames', 100))  # Максимум кадров для обработки
-
-    try:
-        # Обрабатываем видео
-        result = process_video_frames(temp_video.name, sample_rate)
-
-        if not result:
-            flash('Не удалось извлечь кадры из видео', 'danger')
-            os.unlink(temp_video.name)
+    # Если видео нет — можно обработать синхронно (как раньше)
+    if not has_video:
+        if not saved_image_info:
+            flash('Нечего анализировать: файлы не выбраны', 'danger')
             return redirect(url_for('index'))
 
-        # Создаём запись пакетной проверки
-        batch = BatchPrediction(
-            user_id=current_user.id,
-            batch_type='video',
-            source_filename=video.filename,
-            total_items=result['statistics']['total_frames_processed'],
-            summary_stats={
-                'ai_frames': result['statistics']['ai_frames'],
-                'real_frames': result['statistics']['real_frames'],
-                'ai_percentage': result['statistics']['ai_percentage'],
-                'overall_confidence': result['statistics']['overall_confidence'],
-                'final_class': result['statistics']['final_class'],
-                'is_uncertain': result['statistics']['is_uncertain']
-            }
-        )
-        db.session.add(batch)
-        db.session.flush()  # Получаем batch.id
+        created_predictions = []
+        try:
+            for filepath, filename in saved_image_info:
+                pred_class, confidence = predictor.predict(filepath)
+                created_predictions.append(
+                    Prediction(
+                        user_id=user_id,
+                        image_filename=filename,
+                        class_predicted=pred_class,
+                        confidence=confidence
+                    )
+                )
+            for p in created_predictions:
+                db.session.add(p)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            for filepath, _ in saved_image_info:
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+            flash(f'Ошибка при обработке: {str(e)}', 'danger')
+            return redirect(url_for('index'))
 
-        # Сохраняем кадры
-        for frame_data in result['frame_predictions']:
-            # Перемещаем временный файл кадра в постоянное хранилище
-            frame_filename = f"{uuid.uuid4().hex}.jpg"
-            frame_filepath = os.path.join(app.config['UPLOAD_FOLDER'], frame_filename)
-            import shutil
-            shutil.move(frame_data['temp_path'], frame_filepath)
+        if len(created_predictions) == 1:
+            return redirect(url_for('prediction_detail', pred_id=created_predictions[0].id))
+        return redirect(url_for('dashboard'))
 
-            frame_pred = FramePrediction(
-                batch_id=batch.id,
-                user_id=current_user.id,
-                image_filename=frame_filename,
-                frame_number=frame_data['frame_number'],
-                class_predicted=frame_data['class_predicted'],
-                confidence=frame_data['confidence']
-            )
-            db.session.add(frame_pred)
-
-        db.session.commit()
-
-        # Удаляем временный видеофайл
-        os.unlink(temp_video.name)
-
-        flash(f'Видео обработано. Проанализировано {result["statistics"]["total_frames_processed"]} кадров.', 'success')
-        return redirect(url_for('batch_detail', batch_id=batch.id))
-
-    except Exception as e:
-        flash(f'Ошибка при обработке видео: {str(e)}', 'danger')
-        if os.path.exists(temp_video.name):
-            os.unlink(temp_video.name)
+    # Видео есть — запускаем фоную задачу с прогрессом
+    if not allowed_video_file(video_file.filename):
+        flash('Недопустимый формат видео', 'danger')
         return redirect(url_for('index'))
+
+    video_ext = video_file.filename.rsplit('.', 1)[1].lower()
+    video_tmp_dir = tempfile.mkdtemp(prefix="upload_video_")
+    video_tmp_path = os.path.join(video_tmp_dir, f"input.{video_ext}")
+    video_file.save(video_tmp_path)
+
+    task_id = uuid.uuid4().hex
+
+    with VIDEO_TASKS_LOCK:
+        VIDEO_TASKS[task_id] = {
+            "user_id": user_id,
+            "status": "queued",
+            "processed_frames": 0,
+            "total_frames": 0,
+            "done": False,
+            "prediction_ids": [],
+            "error": None,
+        }
+
+    def process_task():
+        preview_filename = None
+        preview_path = None
+        created_predictions = []
+        video_prediction = None
+        try:
+            with app.app_context():
+                with VIDEO_TASKS_LOCK:
+                    if task_id in VIDEO_TASKS:
+                        VIDEO_TASKS[task_id]["status"] = "running"
+
+                # 1) Изображения (без прогресса)
+                for filepath, filename in saved_image_info:
+                    pred_class, confidence = predictor.predict(filepath)
+                    created_predictions.append(
+                        Prediction(
+                            user_id=user_id,
+                            image_filename=filename,
+                            class_predicted=pred_class,
+                            confidence=confidence
+                        )
+                    )
+
+                # 2) Видео (с прогрессом)
+                preview_filename = f"{uuid.uuid4().hex}.jpg"
+                preview_path = os.path.join(app.config['UPLOAD_FOLDER'], preview_filename)
+
+                def on_frame_processed(processed, total):
+                    with VIDEO_TASKS_LOCK:
+                        task = VIDEO_TASKS.get(task_id)
+                        if not task:
+                            return
+                        task["processed_frames"] = int(processed)
+                        task["total_frames"] = int(total)
+
+                pred_class, confidence = predictor.predict(
+                    video_tmp_path,
+                    preview_out_path=preview_path,
+                    video_progress_callback=on_frame_processed
+                )
+                video_prediction = Prediction(
+                    user_id=user_id,
+                    image_filename=preview_filename,
+                    class_predicted=pred_class,
+                    confidence=confidence
+                )
+                created_predictions.append(video_prediction)
+
+                for p in created_predictions:
+                    db.session.add(p)
+                db.session.commit()
+
+                pred_ids = [p.id for p in created_predictions]
+                video_pred_id = video_prediction.id if video_prediction else None
+
+                with VIDEO_TASKS_LOCK:
+                    task = VIDEO_TASKS.get(task_id)
+                    if task:
+                        task["prediction_ids"] = pred_ids
+                        task["video_prediction_id"] = video_pred_id
+                        task["done"] = True
+                        task["status"] = "finished"
+
+        except Exception as e:
+            with app.app_context():
+                db.session.rollback()
+            # Удаляем сохранённые файлы изображений
+            for filepath, _ in saved_image_info:
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+            # Удаляем превью видео
+            if preview_path and os.path.exists(preview_path):
+                os.remove(preview_path)
+
+            with VIDEO_TASKS_LOCK:
+                task = VIDEO_TASKS.get(task_id)
+                if task:
+                    task["error"] = str(e)
+                    task["done"] = True
+                    task["status"] = "error"
+
+        finally:
+            shutil.rmtree(video_tmp_dir, ignore_errors=True)
+
+    threading.Thread(target=process_task, daemon=True).start()
+
+    return jsonify({"task_id": task_id}), 202
 
 
 @app.route('/prediction/<int:pred_id>')
@@ -517,16 +357,74 @@ def prediction_detail(pred_id):
     return render_template('result.html', pred=pred)
 
 
-@app.route('/batch/<int:batch_id>')
+@app.route('/profile')
 @login_required
-def batch_detail(batch_id):
-    batch = BatchPrediction.query.get_or_404(batch_id)
-    if batch.user_id != current_user.id:
-        flash('У вас нет доступа к этой записи.', 'danger')
-        return redirect(url_for('dashboard'))
+def profile():
+    # Получаем все предсказания пользователя
+    predictions = Prediction.query.filter_by(user_id=current_user.id).all()
 
-    frames = FramePrediction.query.filter_by(batch_id=batch_id).order_by(FramePrediction.frame_number).all()
-    return render_template('batch_result.html', batch=batch, frames=frames)
+    # Считаем статистику
+    predictions_count = len(predictions)
+    real_count = sum(1 for p in predictions if p.class_predicted == 0)
+    ai_count = sum(1 for p in predictions if p.class_predicted == 1)
+
+    # Средняя уверенность
+    if predictions_count > 0:
+        total_confidence = sum(p.confidence for p in predictions)
+        avg_confidence = total_confidence / predictions_count
+    else:
+        avg_confidence = 0
+
+    return render_template('profile.html',
+                           predictions_count=predictions_count,
+                           real_count=real_count,
+                           ai_count=ai_count,
+                           avg_confidence=avg_confidence)
+
+
+@app.route('/api/user_stats')
+@login_required
+def user_stats():
+    predictions = Prediction.query.filter_by(user_id=current_user.id).all()
+
+    predictions_count = len(predictions)
+    real_count = sum(1 for p in predictions if p.class_predicted == 0)
+    ai_count = sum(1 for p in predictions if p.class_predicted == 1)
+
+    if predictions_count > 0:
+        avg_confidence = sum(p.confidence for p in predictions) / predictions_count
+    else:
+        avg_confidence = 0
+
+    return {
+        'total': predictions_count,
+        'real': real_count,
+        'ai': ai_count,
+        'avg_confidence': round(avg_confidence * 100, 2)
+    }
+
+
+@app.route('/api/video_task/<task_id>', methods=['GET'])
+@login_required
+def video_task_status(task_id):
+    with VIDEO_TASKS_LOCK:
+        task = VIDEO_TASKS.get(task_id)
+
+    if not task:
+        return jsonify({"error": "task not found"}), 404
+    if task["user_id"] != current_user.id:
+        return jsonify({"error": "forbidden"}), 403
+
+    return jsonify({
+        "task_id": task_id,
+        "status": task.get("status"),
+        "processed_frames": task.get("processed_frames", 0),
+        "total_frames": task.get("total_frames", 0),
+        "done": task.get("done", False),
+        "prediction_ids": task.get("prediction_ids", []),
+        "video_prediction_id": task.get("video_prediction_id"),
+        "error": task.get("error"),
+    })
 
 
 if __name__ == '__main__':

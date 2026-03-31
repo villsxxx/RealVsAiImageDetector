@@ -1,11 +1,17 @@
 {% extends "base.html" %}
 {% block title %}История - AI Detector{% endblock %}
 {% block content %}
+<div class="back-button">
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left me-2"></i>Назад
+    </a>
+</div>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
-    <h2><i class="fas fa-history me-2"></i>История проверок</h2>
+    <h2>История проверок</h2>
     <form action="{{ url_for('clear_history') }}" method="post" onsubmit="return confirm('Вы уверены, что хотите удалить всю историю?');">
         <button type="submit" class="btn btn-outline-danger">
-            <i class="fas fa-trash-alt me-2"></i>Очистить всю историю
+            <i class="fas fa-trash-alt me-2"></i>Очистить всё
         </button>
     </form>
 </div>
@@ -14,49 +20,53 @@
     <table class="table table-hover align-middle">
         <thead>
             <tr>
-                <th>ID</th>
-                <th>Изображение</th>
-                <th>Результат</th>
-                <th>Уверенность</th>
-                <th>Дата</th>
-                <th>Действия</th>
+                <th style="text-align: center;">ID</th>
+                <th style="text-align: center;">Изображение</th>
+                <th style="text-align: center;">Результат</th>
+                <th style="text-align: center;">Уверенность</th>
+                <th style="text-align: center;">Дата</th>
+                <th style="text-align: center;">Действия</th>
             </tr>
         </thead>
         <tbody>
             {% for pred in pagination.items %}
                 {% set confidence_display = pred.confidence if pred.class_predicted == 1 else 1 - pred.confidence %}
-                {% set display_label = "AI" if pred.class_predicted == 1 else "Real" %}
+                {% set display_label = "AI" if pred.class_predicted == 1 else "Реальное" %}
                 {% set is_uncertain = confidence_display < 0.65 %}
                 <tr>
-                    <td>{{ pred.id }}</td>
-                    <td>
-                        <img src="{{ url_for('static', filename='uploads/' + pred.image_filename) }}" alt="thumb" style="height: 50px; width: 50px; object-fit: cover;" class="rounded">
+                    <td style="text-align: center;">{{ pred.id }}</td>
+                    <td style="text-align: center;">
+                        <img src="{{ url_for('static', filename='uploads/' + pred.image_filename) }}" alt="thumb" style="height: 80px; width: 80px; object-fit: cover; border-radius: 8px;">
                     </td>
-                    <td>
+                    <td style="text-align: center;">
                         {% if is_uncertain %}
-                            <span class="badge bg-warning text-dark">Неопределённо</span>
+                            <span class="badge-lg badge-warning">Неопределённо</span>
                         {% elif pred.class_predicted == 0 %}
-                            <span class="badge bg-success">Реальное</span>
+                            <span class="badge-lg badge-success">Реальное</span>
                         {% else %}
-                            <span class="badge bg-danger">Сгенерированное</span>
+                            <span class="badge-lg badge-danger">Сгенерированное AI</span>
                         {% endif %}
                     </td>
-                    <td style="min-width: 250px;">
+                    <td style="text-align: center; min-width: 250px;">
                         <div class="slider-container">
-                            <span class="slider-label-left">Real</span>
-                            <div class="slider-track">
-                                <div class="slider-fill" style="background: linear-gradient(90deg, #ef476f 0%, #ffd166 50%, #06d6a0 100%);"></div>
-                                <div class="slider-pointer" style="left: {{ (confidence_display * 100) }}%;"></div>
+                            <div class="slider-labels">
+                                <span>AI</span>
+                                <span>Real</span>
                             </div>
-                            <span class="slider-label-right">AI</span>
+                            <div class="slider-track-container">
+                                <div class="slider-track">
+                                    <div class="slider-fill"></div>
+                                    <div class="slider-pointer" style="left: {{ ((1 - pred.confidence) * 100) }}%;"></div>
+                                </div>
+                            </div>
+                            <div class="confidence-percent">{{ "%.1f"|format(confidence_display * 100) }}% ({{ display_label }})</div>
                         </div>
-                        <small class="text-muted">{{ "%.1f"|format(confidence_display * 100) }}% (в пользу {{ display_label }})</small>
                     </td>
-                    <td>{{ pred.timestamp.strftime('%d.%m.%Y %H:%M') }}</td>
-                    <td>
-                        <a href="{{ url_for('prediction_detail', pred_id=pred.id) }}" class="btn btn-sm btn-outline-primary mb-1">Просмотр</a>
+                    <td style="text-align: center;">{{ pred.timestamp.strftime('%d.%m.%Y %H:%M') }}</td>
+                    <td style="text-align: center;">
+                        <a href="{{ url_for('prediction_detail', pred_id=pred.id) }}" class="btn btn-sm btn-outline-primary" style="padding: 8px 16px; font-size: 0.9rem; min-width: 90px;">Просмотр</a>
                         <form action="{{ url_for('delete_prediction', pred_id=pred.id) }}" method="post" style="display:inline;" onsubmit="return confirm('Удалить эту запись?');">
-                            <button type="submit" class="btn btn-sm btn-outline-danger">Удалить</button>
+                            <button type="submit" class="btn btn-sm btn-outline-danger" style="padding: 8px 16px; font-size: 0.9rem; min-width: 90px;">Удалить</button>
                         </form>
                     </td>
                 </tr>
@@ -90,4 +100,5 @@
         {% endif %}
     </ul>
 </nav>
+
 {% endblock %}

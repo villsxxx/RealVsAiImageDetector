@@ -1,114 +1,479 @@
 {% extends "base.html" %}
 {% block title %}Панель управления - AI Detector{% endblock %}
 {% block content %}
-<h2 class="mb-4"><i class="fas fa-chart-line me-2"></i>Панель управления</h2>
-
+<h2 class="mb-4">Панель управления</h2>
+<div class="d-flex justify-content-end mb-3">
+    <a href="{{ url_for('index') }}" class="btn btn-primary btn-sm">
+        <i class="fas fa-upload me-2"></i>Новая проверка
+    </a>
+</div>
 <div class="row">
-    <div class="col-md-4">
-        <div class="card shadow-sm mb-4">
+    <div class="col-md-6">
+        <div class="card mb-4 stats-card">
             <div class="card-body">
-                <h5 class="card-title">Статистика изображений</h5>
-                <p class="card-text">Всего проверок: {{ predictions|length }}</p>
-                {% if predictions %}
-                    {% set real = predictions|selectattr('class_predicted', 'equalto', 0)|list|length %}
-                    {% set fake = predictions|selectattr('class_predicted', 'equalto', 1)|list|length %}
-                    <p>Реальные: {{ real }}</p>
-                    <p>Сгенерированные: {{ fake }}</p>
+                <h5 class="card-title">
+                    <i class="fas fa-chart-pie me-2"></i>Статистика
+                </h5>
+                {% if stats_total > 0 %}
+                    <div class="stats-content">
+                        <div class="stats-item">
+                            <div class="stats-value text-success">{{ stats_real }}</div>
+                            <div class="stats-label">Реальные</div>
+                        </div>
+                        <div class="stats-divider"></div>
+                        <div class="stats-item">
+                            <div class="stats-value text-danger">{{ stats_ai }}</div>
+                            <div class="stats-label">Сгенерированные</div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="stats-empty">
+                        <i class="fas fa-chart-simple"></i>
+                        <p>Нет данных для статистики</p>
+                    </div>
                 {% endif %}
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="card shadow-sm mb-4">
+    <div class="col-md-6">
+        <div class="card mb-4 achievements-card">
             <div class="card-body">
-                <h5 class="card-title">Пакетные проверки</h5>
-                <p class="card-text">Всего пакетов: {{ batch_predictions|length }}</p>
-                {% set videos = batch_predictions|selectattr('batch_type', 'equalto', 'video')|list|length %}
-                {% set multiples = batch_predictions|selectattr('batch_type', 'equalto', 'multiple')|list|length %}
-                <p>Видео: {{ videos }}</p>
-                <p>Множественные: {{ multiples }}</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card shadow-sm mb-4">
-            <div class="card-body">
-                <h5 class="card-title">Быстрый доступ</h5>
-                <a href="{{ url_for('index') }}" class="btn btn-primary me-2 mb-2">Новая проверка</a>
-                <a href="{{ url_for('history') }}" class="btn btn-outline-secondary mb-2">История</a>
-                <a href="{{ url_for('batch_history') }}" class="btn btn-outline-info mb-2">Пакетная история</a>
+                <h5 class="card-title">
+                    <i class="fas fa-trophy me-2"></i>Ваши достижения
+                </h5>
+                <div class="achievements-content">
+                    <div class="achievements-item">
+                        <i class="fas fa-chart-line achievements-icon"></i>
+                        <div class="achievements-info">
+                            <div class="achievements-value">{{ stats_total }}</div>
+                            <div class="achievements-label">всего проверок</div>
+                        </div>
+                    </div>
+                    <div class="achievements-divider"></div>
+                    <div class="achievements-item">
+                        <i class="fas fa-calendar-check achievements-icon"></i>
+                        <div class="achievements-info">
+                            <div class="achievements-value">{{ days_activity }}</div>
+                            <div class="achievements-label">дней активности</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="motivation-message text-center mt-3">
+                    {% if stats_total == 0 %}
+                        <a href="{{ url_for('index') }}" class="btn btn-primary btn-sm">Начать первый анализ</a>
+                    {% elif stats_total < 5 %}
+                        <small>🎉 Отличный старт! Продолжайте в том же духе</small>
+                    {% elif stats_total < 20 %}
+                        <small>🌟 Вы становитесь экспертом! Так держать</small>
+                    {% else %}
+                        <small>🏆 Мастер анализа! Ваш опыт впечатляет</small>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<h4 class="mt-4">Последние проверки изображений</h4>
+<h4 class="mt-4">Последние проверки</h4>
 <div class="row">
-    {% for pred in predictions %}
+    {% for pred in recent_predictions %}
         {% set confidence_display = pred.confidence if pred.class_predicted == 1 else 1 - pred.confidence %}
-        {% set display_label = "AI" if pred.class_predicted == 1 else "Real" %}
+        {% set display_label = "AI" if pred.class_predicted == 1 else "Реальное" %}
         {% set is_uncertain = confidence_display < 0.65 %}
         <div class="col-md-6 col-lg-4 mb-3">
-            <div class="card h-100 shadow-sm">
-                <img src="{{ url_for('static', filename='uploads/' + pred.image_filename) }}" class="card-img-top" alt="Preview" style="height: 180px; object-fit: cover;">
+            <div class="card h-100 history-card">
+                <img src="{{ url_for('static', filename='uploads/' + pred.image_filename) }}" class="card-img-top" alt="Preview">
                 <div class="card-body">
-                    <h5 class="card-title">
+                    <div class="text-center mb-3">
                         {% if is_uncertain %}
-                            <span class="badge bg-warning text-dark">Неопределённо</span>
+                            <span class="result-badge badge-warning">Неопределённо</span>
                         {% elif pred.class_predicted == 0 %}
-                            <span class="badge bg-success">Реальное</span>
+                            <span class="result-badge badge-success">Реальное</span>
                         {% else %}
-                            <span class="badge bg-danger">Сгенерированное</span>
+                            <span class="result-badge badge-danger">Сгенерированное AI</span>
                         {% endif %}
-                    </h5>
-                    <div class="slider-container slider-container-sm mb-2">
-                        <span class="slider-label-left">Real</span>
-                        <div class="slider-track">
-                            <div class="slider-fill" style="background: linear-gradient(90deg, #ef476f 0%, #ffd166 50%, #06d6a0 100%);"></div>
-                            <div class="slider-pointer" style="left: {{ (confidence_display * 100) }}%;"></div>
-                        </div>
-                        <span class="slider-label-right">AI</span>
                     </div>
-                    <p class="card-text">
-                        {{ "%.1f"|format(confidence_display * 100) }}% (в пользу {{ display_label }})<br>
+                    <div class="slider-container">
+                        <div class="slider-labels">
+                            <span>AI</span>
+                            <span>Real</span>
+                        </div>
+                        <div class="slider-track-container">
+                            <div class="slider-track">
+                                <div class="slider-fill"></div>
+                                <div class="slider-pointer" style="left: {{ ((1 - pred.confidence) * 100) }}%;"></div>
+                            </div>
+                        </div>
+                        <div class="confidence-percent">{{ "%.1f"|format(confidence_display * 100) }}% ({{ display_label }})</div>
+                    </div>
+                    <div class="text-end mt-2">
                         <small class="text-muted">{{ pred.timestamp.strftime('%d.%m.%Y %H:%M') }}</small>
-                    </p>
-                    <a href="{{ url_for('prediction_detail', pred_id=pred.id) }}" class="btn btn-sm btn-outline-primary">Подробнее</a>
+                    </div>
+                    <div class="text-center mt-3">
+                        <a href="{{ url_for('prediction_detail', pred_id=pred.id) }}" class="btn btn-sm btn-outline-primary">Подробнее</a>
+                    </div>
                 </div>
             </div>
         </div>
     {% else %}
-        <p class="text-muted">Пока нет проверок.</p>
+        <div class="col-12">
+            <div class="alert alert-info text-center">
+                <i class="fas fa-info-circle me-2"></i>У вас пока нет проверок.
+                <a href="{{ url_for('index') }}" class="alert-link">Загрузите первое изображение</a>
+            </div>
+        </div>
     {% endfor %}
 </div>
 
-<h4 class="mt-4">Последние пакетные проверки</h4>
-<div class="row">
-    {% for batch in batch_predictions %}
-        <div class="col-md-6 col-lg-4 mb-3">
-            <div class="card h-100 shadow-sm">
-                <div class="card-body">
-                    <h5 class="card-title">
-                        {% if batch.batch_type == 'video' %}
-                            <i class="fas fa-video me-2 text-primary"></i>Видео
-                        {% else %}
-                            <i class="fas fa-images me-2 text-primary"></i>Множественные
-                        {% endif %}
-                    </h5>
-                    <p class="card-text">
-                        {% set stats = batch.summary_stats %}
-                        <strong>Источник:</strong> {{ batch.source_filename }}<br>
-                        <strong>Всего элементов:</strong> {{ batch.total_items }}<br>
-                        <strong>AI элементы:</strong> {{ stats.ai_frames if stats else 'N/A' }}<br>
-                        <strong>Реальные элементы:</strong> {{ stats.real_frames if stats else 'N/A' }}<br>
-                        <strong>Дата:</strong> {{ batch.timestamp.strftime('%d.%m.%Y %H:%M') }}
-                    </p>
-                    <a href="{{ url_for('batch_detail', batch_id=batch.id) }}" class="btn btn-sm btn-outline-primary">Детали</a>
-                </div>
-            </div>
-        </div>
-    {% else %}
-        <p class="text-muted">Пока нет пакетных проверок.</p>
-    {% endfor %}
-</div>
+<style>
+/* Общие стили для карточек */
+.stats-card, .achievements-card {
+    height: 100%;
+}
+
+.stats-card .card-body, .achievements-card .card-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 280px;
+}
+
+/* Стили для заголовков карточек */
+.card-title {
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.card-title i {
+    color: var(--accent-light);
+}
+
+/* Стили для статистики */
+.stats-content {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    margin: 1rem 0;
+    flex: 1;
+}
+
+.stats-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.stats-value {
+    font-size: 3rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.text-success {
+    color: var(--accent-light) !important;
+}
+
+.text-danger {
+    color: #ff6b6b !important;
+}
+
+.stats-label {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+}
+
+.stats-divider {
+    width: 1px;
+    height: 60px;
+    background: var(--border-color);
+}
+
+.stats-empty {
+    text-align: center;
+    padding: 2rem 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.stats-empty i {
+    font-size: 3rem;
+    color: var(--text-muted);
+}
+
+.stats-empty p {
+    color: var(--text-primary);
+    margin: 0;
+}
+
+/* Стили для достижений */
+.achievements-content {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    margin: 1rem 0;
+    flex: 1;
+}
+
+.achievements-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex: 1;
+    justify-content: center;
+}
+
+.achievements-icon {
+    font-size: 2.2rem;
+    color: var(--accent-light);
+}
+
+.achievements-info {
+    text-align: left;
+}
+
+.achievements-value {
+    font-size: 2.2rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--text-primary);
+}
+
+.achievements-label {
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+    margin-top: 5px;
+}
+
+.achievements-divider {
+    width: 1px;
+    height: 60px;
+    background: var(--border-color);
+}
+
+.motivation-message {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.motivation-message small {
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+/* Стили для карточек последних проверок */
+.result-badge {
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 1rem;
+    display: inline-block;
+}
+
+.badge-warning {
+    background: rgba(255, 193, 7, 0.2);
+    color: #ffc107;
+    border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.badge-success {
+    background: rgba(42, 143, 111, 0.2);
+    color: var(--accent-light);
+    border: 1px solid rgba(42, 143, 111, 0.3);
+}
+
+.badge-danger {
+    background: rgba(220, 53, 69, 0.2);
+    color: #ff6b6b;
+    border: 1px solid rgba(220, 53, 69, 0.3);
+}
+
+.history-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.history-card .card-body {
+    flex: 1;
+}
+
+.history-card img {
+    height: 180px;
+    object-fit: cover;
+}
+
+.history-card .slider-container {
+    margin: 10px 0;
+}
+
+/* Стили для слайдера */
+.slider-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    margin: 15px 0;
+}
+
+.slider-labels {
+    display: flex;
+    justify-content: space-between;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.slider-track-container {
+    position: relative;
+    width: 100%;
+}
+
+.slider-track {
+    position: relative;
+    width: 100%;
+    height: 8px;
+    background: var(--border-color);
+    border-radius: 10px;
+    overflow: visible;
+    cursor: pointer;
+}
+
+.slider-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 10px;
+    background: linear-gradient(90deg, #dc2626 0%, #10b981 100%);
+}
+
+.slider-pointer {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px;
+    height: 20px;
+    background: var(--text-primary);
+    border: 3px solid var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(0,0,0,0.3);
+    z-index: 10;
+    pointer-events: none;
+    transition: left 0.1s ease;
+}
+
+.confidence-percent {
+    text-align: center;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-top: 5px;
+}
+
+/* Кнопки */
+.btn-sm {
+    padding: 8px 16px !important;
+    font-size: 0.9rem !important;
+    min-width: 90px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.btn-outline-primary {
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--accent-light);
+    transition: all 0.3s ease;
+}
+
+.btn-outline-primary:hover {
+    background: var(--accent);
+    color: white;
+    transform: translateY(-2px);
+}
+
+.btn-primary {
+    background: var(--accent);
+    color: white;
+}
+
+.btn-primary:hover {
+    background: var(--accent-light);
+    transform: translateY(-2px);
+}
+
+/* Алерты */
+.alert-info {
+    background: rgba(42, 143, 111, 0.1);
+    border: 1px solid rgba(42, 143, 111, 0.3);
+    color: var(--accent-light);
+}
+
+.alert-link {
+    color: var(--accent-light);
+    text-decoration: underline;
+}
+
+.alert-link:hover {
+    color: var(--accent);
+}
+
+/* Общие стили */
+.text-muted {
+    color: var(--text-muted) !important;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .stats-value {
+        font-size: 2rem;
+    }
+
+    .stats-label {
+        font-size: 0.7rem;
+    }
+
+    .achievements-icon {
+        font-size: 1.6rem;
+    }
+
+    .achievements-value {
+        font-size: 1.6rem;
+    }
+
+    .achievements-label {
+        font-size: 0.65rem;
+    }
+
+    .stats-divider, .achievements-divider {
+        height: 40px;
+    }
+
+    .stats-card .card-body, .achievements-card .card-body {
+        min-height: 240px;
+    }
+
+    .motivation-message small {
+        font-size: 0.75rem;
+    }
+}
+</style>
 {% endblock %}
