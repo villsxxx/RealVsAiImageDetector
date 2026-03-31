@@ -2,14 +2,14 @@ import torch
 import os
 from PIL import Image
 from torchvision import transforms
-from Models.ResNet import CustomResNet
+from Models.ResNet import ResNet18Classifier
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Используемое устройство: {device}")
 
 inference_image_path = 'D:/Validation_example/images.jpg'
 
-model = CustomResNet(num_classes=2).to(device)
+model = ResNet18Classifier(num_classes=2).to(device)
 
 model_path = 'D:/nnModels/RGDetector/run_2/best_model.pth'
 if not os.path.exists(model_path):

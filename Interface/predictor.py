@@ -3,17 +3,17 @@ import torchvision.transforms as transforms
 from PIL import Image
 import os
 
-CHECKPOINT_PATH = os.path.join(os.path.dirname(__file__), '..', 'ActualModels', 'best-epoch=91-val_loss=0.4410.ckpt')
+CHECKPOINT_PATH = os.path.join(os.path.dirname(__file__), '..', 'ActualModels', 'best-epoch=06-val_loss=0.2631.ckpt')
 CHECKPOINT_PATH = os.path.abspath(CHECKPOINT_PATH)
 
 
-from Models import CustomResNet
+from Models import ResNet18ClassifierBackbone
 
 
 class ImagePredictor:
     def __init__(self, checkpoint_path=CHECKPOINT_PATH):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.model = CustomResNet(num_classes=2).to(self.device)
+        self.model = ResNet18ClassifierBackbone(num_classes=2).to(self.device)
 
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
 

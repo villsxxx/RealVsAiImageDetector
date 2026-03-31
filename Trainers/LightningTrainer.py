@@ -1,13 +1,44 @@
+import os
 import torch
+
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-import os
-import warnings
 from Tools import LightningModelWrapper
+from pytorch_lightning.callbacks import Callback
 
-warnings.filterwarnings("ignore", message="Checkpoint directory.*exists and is not empty")
+
+class PrintEpochCallback(Callback):
+    def __init__(self, log_dir):
+        super().__init__()
+        self.log_dir = log_dir
+        self.log_file = None
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        if trainer.current_epoch == 0:
+            return
+
+        metrics = trainer.callback_metrics
+        line = (f"Epoch {trainer.current_epoch}: "
+                f"train_loss={metrics.get('train_loss', 0):.6f}, "
+                f"train_acc={metrics.get('train_acc', 0):.6f}, "
+                f"val_loss={metrics.get('val_loss', 0):.6f}, "
+                f"val_acc={metrics.get('val_acc', 0):.6f}")
+
+        print(f"\n{line}")
+
+        if self.log_file is None:
+            os.makedirs(self.log_dir, exist_ok=True)
+            self.log_file = open(os.path.join(self.log_dir, "training_log.txt"), "a")
+
+        self.log_file.write(line + "\n")
+        self.log_file.flush()
+
+    def on_fit_end(self, trainer, pl_module):
+        if self.log_file:
+            self.log_file.close()
+
 
 class LightningTrainer:
     def __init__(
@@ -52,6 +83,7 @@ class LightningTrainer:
             shuffle=True,
             num_workers=num_workers,
             persistent_workers=persistent_workers,
+            pin_memory=True,
             generator=torch.Generator().manual_seed(seed)
         )
         self.val_loader = DataLoader(
@@ -62,6 +94,7 @@ class LightningTrainer:
             persistent_workers=persistent_workers,
             generator=torch.Generator().manual_seed(seed)
         ) if val_dataset else None
+
         callbacks = [
             ModelCheckpoint(dirpath=model_dir,
                             filename="epoch-{epoch:02d}-{val_loss:.4f}",
@@ -75,6 +108,8 @@ class LightningTrainer:
             ModelCheckpoint(dirpath=model_dir,
                             filename="last-{epoch:02d}",
                             save_last=True),
+            PrintEpochCallback(log_dir=model_dir),
+
         ]
         logger = TensorBoardLogger(save_dir=model_dir, name="tensorboard", version=0)
         self.pl_trainer = pl.Trainer(

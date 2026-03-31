@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Результат пакетной проверки - AI Detector{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="card shadow-lg">
+            <div class="card-header bg-primary text-white">
+                <h3 class="mb-0">
+                    {% if batch.batch_type == 'video' %}
+                        <i class="fas fa-video me-2"></i>Результат анализа видео
+                    {% else %}
+                        <i class="fas fa-images me-2"></i>Результат пакетного анализа
+                    {% endif %}
+                </h3>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <h5>Информация</h5>
+                        <p>
+                            <strong>Источник:</strong> {{ batch.source_filename }}<br>
+                            <strong>Тип:</strong> {% if batch.batch_type == 'video' %}Видео{% else %}Множественные изображения{% endif %}<br>
+                            <strong>Дата:</strong> {{ batch.timestamp.strftime('%d.%m.%Y %H:%M') }}<br>
+                            <strong>Обработано элементов:</strong> {{ batch.total_items }}
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Общий результат</h5>
+                        {% set stats = batch.summary_stats %}
+                        {% if stats %}
+                            {% set is_uncertain = stats.is_uncertain %}
+                            {% set final_class = stats.final_class %}
+                            <div class="display-6 mb-3
+                                {% if is_uncertain %}text-warning
+                                {% elif final_class == 0 %}text-success
+                                {% else %}text-danger{% endif %}">
+                                {% if is_uncertain %}
+                                    <i class="fas fa-question-circle"></i> Неопределённый результат
+                                {% elif final_class == 0 %}
+                                    <i class="fas fa-check-circle"></i> Преимущественно реальные
+                                {% else %}
+                                    <i class="fas fa-exclamation-triangle"></i> Преимущественно сгенерированные AI
+                                {% endif %}
+                            </div>
+                            <div class="slider-container slider-container-lg mb-3">
+                                <span class="slider-label-left">Real</span>
+                                <div class="slider-track">
+                                    <div class="slider-fill" style="background: linear-gradient(90deg, #ef476f 0%, #ffd166 50%, #06d6a0 100%);"></div>
+                                    <div class="slider-pointer" style="left: {{ (stats.overall_confidence * 100) }}%;"></div>
+                                </div>
+                                <span class="slider-label-right">AI</span>
+                            </div>
+                            <p>
+                                <strong>AI кадров:</strong> {{ stats.ai_frames }} ({{ "%.1f"|format(stats.ai_percentage) }}%)<br>
+                                <strong>Реальных кадров:</strong> {{ stats.real_frames }} ({{ "%.1f"|format(100 - stats.ai_percentage) }}%)<br>
+                                <strong>Средняя уверенность:</strong> {{ "%.1f"|format(stats.overall_confidence * 100) }}%
+                            </p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <h5 class="mt-4">Детальный анализ элементов</h5>
+                <div class="row">
+                    {% for frame in frames %}
+                        {% set confidence_display = frame.confidence if frame.class_predicted == 1 else 1 - frame.confidence %}
+                        {% set display_label = "AI" if frame.class_predicted == 1 else "Real" %}
+                        {% set is_uncertain = confidence_display < 0.65 %}
+                        <div class="col-md-4 col-lg-3 mb-3">
+                            <div class="card h-100 shadow-sm">
+                                <img src="{{ url_for('static', filename='uploads/' + frame.image_filename) }}" class="card-img-top" alt="Frame {{ frame.frame_number }}" style="height: 150px; object-fit: cover;">
+                                <div class="card-body">
+                                    <h6 class="card-title">
+                                        {% if batch.batch_type == 'video' %}
+                                            Кадр #{{ frame.frame_number }}
+                                        {% else %}
+                                            Элемент #{{ loop.index }}
+                                        {% endif %}
+                                    </h6>
+                                    <div class="slider-container slider-container-sm mb-2">
+                                        <span class="slider-label-left">Real</span>
+                                        <div class="slider-track">
+                                            <div class="slider-fill" style="background: linear-gradient(90deg, #ef476f 0%, #ffd166 50%, #06d6a0 100%);"></div>
+                                            <div class="slider-pointer" style="left: {{ (confidence_display * 100) }}%;"></div>
+                                        </div>
+                                        <span class="slider-label-right">AI</span>
+                                    </div>
+                                    <p class="card-text small">
+                                        {% if is_uncertain %}
+                                            <span class="badge bg-warning text-dark">Неопределённо</span>
+                                        {% elif frame.class_predicted == 0 %}
+                                            <span class="badge bg-success">Реальное</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">Сгенерированное</span>
+                                        {% endif %}
+                                        <br>
+                                        {{ "%.1f"|format(confidence_display * 100) }}% в пользу {{ display_label }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <div class="mt-4 text-center">
+                    <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg me-2">Новая проверка</a>
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary btn-lg">В панель</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

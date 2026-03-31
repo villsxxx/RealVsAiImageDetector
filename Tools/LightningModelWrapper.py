@@ -26,13 +26,29 @@ class LightningModelWrapper(pl.LightningModule):
         imgs, labels = batch
         outputs = self(imgs)
         loss = self.criterion(outputs, labels)
-        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
+
         preds = torch.argmax(outputs, dim=1)
         acc = (preds == labels).float().mean()
+
+        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
         self.log('val_acc', acc, on_step=False, on_epoch=True, prog_bar=True)
         return loss
 
     def configure_optimizers(self):
         opt_class = getattr(torch.optim, self.optimizer_config["type"])
         optimizer = opt_class(self.parameters(), **self.optimizer_config["args"])
-        return optimizer
+
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=self.trainer.max_epochs,
+            eta_min=self.optimizer_config["args"]["lr"] / 100
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "epoch",
+                "frequency": 1
+            }
+        }

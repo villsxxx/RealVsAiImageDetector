@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict
-from typing import List, Literal
+from typing import List, Literal, Optional
+
 
 class DatasetConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -10,15 +11,15 @@ class DatasetConfig(BaseModel):
     val_class_1_paths: List[str]
     img_height: int = 256
     img_width: int = 256
-    crop_size: int = 224
-    use_horizontal_flip: bool = True
-    normalize_mean: List[float] = [0.485, 0.456, 0.406]
-    normalize_std: List[float] = [0.229, 0.224, 0.225]
+
 
 class ModelConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    model_type: str = "CustomResNet"
+    model_type: str = "ConvNeXt"
     num_classes: int = 2
+    pretrained_path: Optional[str] = None
+    freeze_backbone: bool = False
+
 
 class OptimizerConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -42,7 +43,7 @@ class TrainerConfig(BaseModel):
     check_val_every_n_epoch: int = 1
     accelerator: str = "auto"
     devices: int = 1
-    precision: int = 16
+    precision:  str = "16-mixed"
 
 class FullConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -53,3 +54,5 @@ class FullConfig(BaseModel):
     optimizer: OptimizerConfig
     trainer: TrainerConfig
     loss: str = "cross_entropy"
+
+

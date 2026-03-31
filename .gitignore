@@ -28,3 +28,6 @@ Interface/static/uploads/
 # System files
 .DS_Store
 Thumbs.db
+UntrackedFiles
+**/*.csv
+**/*.txt

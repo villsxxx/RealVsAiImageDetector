@@ -2,11 +2,12 @@
 {% block title %}Панель управления - AI Detector{% endblock %}
 {% block content %}
 <h2 class="mb-4"><i class="fas fa-chart-line me-2"></i>Панель управления</h2>
+
 <div class="row">
-    <div class="col-md-6">
+    <div class="col-md-4">
         <div class="card shadow-sm mb-4">
             <div class="card-body">
-                <h5 class="card-title">Статистика</h5>
+                <h5 class="card-title">Статистика изображений</h5>
                 <p class="card-text">Всего проверок: {{ predictions|length }}</p>
                 {% if predictions %}
                     {% set real = predictions|selectattr('class_predicted', 'equalto', 0)|list|length %}
@@ -17,18 +18,31 @@
             </div>
         </div>
     </div>
-    <div class="col-md-6">
+    <div class="col-md-4">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Пакетные проверки</h5>
+                <p class="card-text">Всего пакетов: {{ batch_predictions|length }}</p>
+                {% set videos = batch_predictions|selectattr('batch_type', 'equalto', 'video')|list|length %}
+                {% set multiples = batch_predictions|selectattr('batch_type', 'equalto', 'multiple')|list|length %}
+                <p>Видео: {{ videos }}</p>
+                <p>Множественные: {{ multiples }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
         <div class="card shadow-sm mb-4">
             <div class="card-body">
                 <h5 class="card-title">Быстрый доступ</h5>
-                <a href="{{ url_for('index') }}" class="btn btn-primary me-2">Новая проверка</a>
-                <a href="{{ url_for('history') }}" class="btn btn-outline-secondary">Вся история</a>
+                <a href="{{ url_for('index') }}" class="btn btn-primary me-2 mb-2">Новая проверка</a>
+                <a href="{{ url_for('history') }}" class="btn btn-outline-secondary mb-2">История</a>
+                <a href="{{ url_for('batch_history') }}" class="btn btn-outline-info mb-2">Пакетная история</a>
             </div>
         </div>
     </div>
 </div>
 
-<h4 class="mt-4">Последние проверки</h4>
+<h4 class="mt-4">Последние проверки изображений</h4>
 <div class="row">
     {% for pred in predictions %}
         {% set confidence_display = pred.confidence if pred.class_predicted == 1 else 1 - pred.confidence %}
@@ -65,6 +79,36 @@
         </div>
     {% else %}
         <p class="text-muted">Пока нет проверок.</p>
+    {% endfor %}
+</div>
+
+<h4 class="mt-4">Последние пакетные проверки</h4>
+<div class="row">
+    {% for batch in batch_predictions %}
+        <div class="col-md-6 col-lg-4 mb-3">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        {% if batch.batch_type == 'video' %}
+                            <i class="fas fa-video me-2 text-primary"></i>Видео
+                        {% else %}
+                            <i class="fas fa-images me-2 text-primary"></i>Множественные
+                        {% endif %}
+                    </h5>
+                    <p class="card-text">
+                        {% set stats = batch.summary_stats %}
+                        <strong>Источник:</strong> {{ batch.source_filename }}<br>
+                        <strong>Всего элементов:</strong> {{ batch.total_items }}<br>
+                        <strong>AI элементы:</strong> {{ stats.ai_frames if stats else 'N/A' }}<br>
+                        <strong>Реальные элементы:</strong> {{ stats.real_frames if stats else 'N/A' }}<br>
+                        <strong>Дата:</strong> {{ batch.timestamp.strftime('%d.%m.%Y %H:%M') }}
+                    </p>
+                    <a href="{{ url_for('batch_detail', batch_id=batch.id) }}" class="btn btn-sm btn-outline-primary">Детали</a>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <p class="text-muted">Пока нет пакетных проверок.</p>
     {% endfor %}
 </div>
 {% endblock %}
