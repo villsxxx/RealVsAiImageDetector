@@ -79,7 +79,8 @@
     {% for pred in recent_predictions %}
         {% set confidence_display = pred.confidence if pred.class_predicted == 1 else 1 - pred.confidence %}
         {% set display_label = "AI" if pred.class_predicted == 1 else "Реальное" %}
-        {% set is_uncertain = confidence_display < 0.65 %}
+        {% set cutoff_ratio = current_user.uncertainty_cutoff_percent / 100.0 %}
+        {% set is_uncertain = confidence_display < cutoff_ratio %}
         <div class="col-md-6 col-lg-4 mb-3">
             <div class="card h-100 history-card">
                 <img src="{{ url_for('static', filename='uploads/' + pred.image_filename) }}" class="card-img-top" alt="Preview">

@@ -32,3 +32,6 @@ UntrackedFiles
 **/*.csv
 **/*.txt
 preview_test
+
+**/*.zip
+PROJECT_OVERVIEW_4.md

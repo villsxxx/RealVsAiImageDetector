@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField, SubmitField
-from wtforms.validators import DataRequired, Email, EqualTo, Length, ValidationError
+from wtforms import StringField, PasswordField, SubmitField, IntegerField
+from wtforms.validators import DataRequired, Email, EqualTo, Length, ValidationError, NumberRange
 from models import User
 
 class LoginForm(FlaskForm):
@@ -24,3 +24,18 @@ class RegisterForm(FlaskForm):
         user = User.query.filter_by(email=email.data).first()
         if user:
             raise ValidationError('Этот email уже зарегистрирован.')
+
+
+class ProfileCutoffForm(FlaskForm):
+    uncertainty_cutoff_percent = IntegerField(
+        'Порог уверенности для однозначного вердикта (%)',
+        validators=[DataRequired(), NumberRange(min=50, max=100)],
+        render_kw={
+            'type': 'range',
+            'class': 'form-range profile-cutoff-range',
+            'min': 50,
+            'max': 100,
+            'step': 1,
+        },
+    )
+    submit = SubmitField('Сохранить')

@@ -5,13 +5,14 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from werkzeug.exceptions import RequestEntityTooLarge
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+from sqlalchemy import inspect, text
 from datetime import datetime
 import uuid
 import tempfile
 import shutil
 
 from models import db, User, Prediction
-from forms import LoginForm, RegisterForm
+from forms import LoginForm, RegisterForm, ProfileCutoffForm
 from predictor import predictor
 
 app = Flask(__name__)
@@ -26,8 +27,30 @@ db.init_app(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
+def _ensure_user_uncertainty_cutoff_column():
+    """Добавляет колонку в существующую SQLite-таблицу user (create_all не меняет схему)."""
+    try:
+        inspector = inspect(db.engine)
+        if 'user' not in inspector.get_table_names():
+            return
+        cols = {c['name'] for c in inspector.get_columns('user')}
+        if 'uncertainty_cutoff_percent' in cols:
+            return
+        with db.engine.begin() as conn:
+            conn.execute(
+                text(
+                    'ALTER TABLE user ADD COLUMN uncertainty_cutoff_percent '
+                    'INTEGER NOT NULL DEFAULT 65'
+                )
+            )
+    except Exception:
+        # Не блокируем запуск при нестандартной БД; ошибка проявится при обращении к полю
+        pass
+
+
 with app.app_context():
     db.create_all()
+    _ensure_user_uncertainty_cutoff_column()
 
 # Хранилище задач обработки видео (упрощённо: в памяти процесса)
 # Важно: если перезапустить сервер — задачи сотрутся.
@@ -357,9 +380,16 @@ def prediction_detail(pred_id):
     return render_template('result.html', pred=pred)
 
 
-@app.route('/profile')
+@app.route('/profile', methods=['GET', 'POST'])
 @login_required
 def profile():
+    form = ProfileCutoffForm(obj=current_user)
+    if form.validate_on_submit():
+        current_user.uncertainty_cutoff_percent = form.uncertainty_cutoff_percent.data
+        db.session.commit()
+        flash('Порог отсечения сохранён.', 'success')
+        return redirect(url_for('profile'))
+
     # Получаем все предсказания пользователя
     predictions = Prediction.query.filter_by(user_id=current_user.id).all()
 
@@ -375,11 +405,14 @@ def profile():
     else:
         avg_confidence = 0
 
-    return render_template('profile.html',
-                           predictions_count=predictions_count,
-                           real_count=real_count,
-                           ai_count=ai_count,
-                           avg_confidence=avg_confidence)
+    return render_template(
+        'profile.html',
+        predictions_count=predictions_count,
+        real_count=real_count,
+        ai_count=ai_count,
+        avg_confidence=avg_confidence,
+        cutoff_form=form,
+    )
 
 
 @app.route('/api/user_stats')

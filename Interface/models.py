@@ -10,6 +10,8 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Порог уверенности (50–100 %): ниже — вердикт «неопределённо»
+    uncertainty_cutoff_percent = db.Column(db.Integer, nullable=False, default=65)
     predictions = db.relationship('Prediction', backref='user', lazy=True)
 
 class Prediction(db.Model):

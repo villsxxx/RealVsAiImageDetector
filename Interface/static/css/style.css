@@ -21,6 +21,17 @@
     --slider-gradient: linear-gradient(90deg, #dc2626 0%, #10b981 100%);
 }
 
+/* Проценты уверенности и порог в профиле — на тёмной теме явно белые (Bootstrap тянет серый с карточки) */
+html[data-theme="dark"] .confidence-percent,
+html[data-theme="dark"] #cutoff-live-value {
+    color: #ffffff !important;
+}
+
+/* Подпись рядом с порогом (% — минимум…) не теряется на тёмном фоне */
+html[data-theme="dark"] .cutoff-form .text-muted {
+    color: rgba(255, 255, 255, 0.88) !important;
+}
+
 :root[data-theme="light"] {
     --bg-primary: #f8fafc;
     --bg-secondary: #ffffff;

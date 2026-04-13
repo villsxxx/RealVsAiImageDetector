@@ -18,7 +18,8 @@
 
                 {% set confidence_display = pred.confidence if pred.class_predicted == 1 else 1 - pred.confidence %}
                 {% set display_label = "AI" if pred.class_predicted == 1 else "Реальное" %}
-                {% set is_uncertain = confidence_display < 0.65 %}
+                {% set cutoff_ratio = current_user.uncertainty_cutoff_percent / 100.0 %}
+                {% set is_uncertain = confidence_display < cutoff_ratio %}
 
                 <h4 class="mb-3">Вердикт:</h4>
                 <div class="display-5 mb-3
@@ -51,7 +52,8 @@
 
                 {% if is_uncertain %}
                     <div class="alert alert-warning" role="alert">
-                        Для данного изображения не удаётся однозначно определить, создано ли это изображение искусственным интеллектом.
+                        Для данного изображения не удаётся однозначно определить, создано ли это изображение искусственным интеллектом
+                        (порог уверенности в профиле: {{ current_user.uncertainty_cutoff_percent }}&nbsp;%).
                     </div>
                 {% endif %}
 
