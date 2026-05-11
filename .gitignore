@@ -35,3 +35,14 @@ preview_test
 
 **/*.zip
 PROJECT_OVERVIEW_4.md
+
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/**
+
+# Test artifacts
+*.log
